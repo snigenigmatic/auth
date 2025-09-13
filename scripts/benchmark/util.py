@@ -1,5 +1,13 @@
 """Utility functions for the benchmark scripts."""
 
+# Changes made for metrics implementation (Issue #129):
+#
+# WHAT CHANGED:
+# 1. Added proper HTTP headers (Content-Type, Accept, User-Agent) for consistent request testing
+# 2. Added error handling for non-JSON responses (like /readme HTML redirects)
+# 3. Enhanced response parsing to handle different content types
+
+
 import os
 import time
 
@@ -59,10 +67,22 @@ def make_request(
     try:
         return response.json(), elapsed_time
     except ValueError:
-        # For non-JSON responses (like HTML redirects), return status info
+        # For non-JSON responses (like HTML redirects), return human-readable status info
+        status_text = {
+            200: "OK",
+            308: "Permanent Redirect", 
+            404: "Not Found",
+            500: "Internal Server Error"
+        }.get(response.status_code, f"HTTP {response.status_code}")
+        
+        content_type = response.headers.get("content-type", "unknown").split(";")[0]
+        content_size = len(response.content)
+        
         return {
-            "status_code": response.status_code,
-            "content_type": response.headers.get("content-type", ""),
-            "content_length": len(response.content),
-            "response_time": elapsed_time,
+            "status": f"{response.status_code} {status_text}",
+            "content_type": content_type,
+            "content_size_bytes": content_size,
+            "content_size_human": f"{content_size} bytes" if content_size < 1024 else f"{content_size/1024:.1f} KB",
+            "response_time_ms": round(elapsed_time * 1000, 2),
+            "success": 200 <= response.status_code < 300,
         }, elapsed_time

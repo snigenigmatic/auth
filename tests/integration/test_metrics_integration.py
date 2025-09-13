@@ -28,7 +28,7 @@ class TestMetricsIntegration:
     """Integration tests for metrics collection and endpoint."""
 
     def test_metrics_endpoint_returns_empty_metrics(self, client):
-        """Test that metrics endpoint returns empty metrics initially."""
+        """Test that metrics endpoint returns only middleware metrics initially."""
         response = client.get("/metrics")
         assert response.status_code == 200
 
@@ -36,7 +36,16 @@ class TestMetricsIntegration:
         assert data["status"] is True
         assert data["message"] == "Metrics retrieved successfully"
         assert "timestamp" in data
-        assert data["metrics"] == {}
+        
+        # After middleware implementation, we expect request-level metrics
+        metrics = data["metrics"]
+        assert "requests_total" in metrics
+        assert "requests_total_route_/metrics" in metrics
+        assert metrics["requests_total"] >= 1
+        
+        # Should not have any authentication-specific metrics yet
+        auth_metrics = {k: v for k, v in metrics.items() if "auth" in k}
+        assert len(auth_metrics) == 0
 
     def test_metrics_endpoint_after_successful_auth(self, client):
         """Test that metrics are collected after successful authentication."""
