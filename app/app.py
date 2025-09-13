@@ -1,11 +1,9 @@
 """FastAPI Entrypoint for PESUAuth API."""
 
-
 import argparse
 import asyncio
 import datetime
 import logging
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -21,7 +19,7 @@ from app.docs import authenticate_docs, health_docs, readme_docs
 from app.docs.metrics import metrics_docs
 from app.exceptions.base import PESUAcademyError
 from app.metrics import metrics  # Global metrics instance
-from app.models import RequestModel, ResponseModel, MetricsResponseModel
+from app.models import MetricsResponseModel, RequestModel, ResponseModel
 from app.pesu import PESUAcademy
 
 IST = pytz.timezone("Asia/Kolkata")
@@ -105,16 +103,19 @@ app = FastAPI(
     ],
 )
 
+
 # --- Metrics Middleware ---
 @app.middleware("http")
-async def metrics_middleware(request: Request, call_next):
+async def metrics_middleware(request: Request, call_next: callable) -> Response:
+    """Middleware to track request metrics for every HTTP request.
+
+    Increments counters for total requests, per-route requests, success/failure, and latency.
+    """
     route = request.url.path
     metrics.inc("requests_total")
     metrics.inc(f"requests_total_route_{route}")
-    start_time = time.time()
     try:
         response: Response = await call_next(request)
-        latency = time.time() - start_time
         metrics.inc("requests_latency_sum")  # For histogram/average in future
         if 200 <= response.status_code < 300:
             metrics.inc("requests_success")
@@ -123,11 +124,12 @@ async def metrics_middleware(request: Request, call_next):
             metrics.inc(f"requests_failed_status_{response.status_code}")
         return response
     except Exception as e:
-        latency = time.time() - start_time
         metrics.inc("requests_failed")
         metrics.inc(f"requests_failed_exception_{type(e).__name__}")
         metrics.inc("requests_latency_sum")
         raise
+
+
 pesu_academy = PESUAcademy()
 
 
@@ -209,7 +211,6 @@ async def health() -> JSONResponse:
     )
 
 
-
 @app.get(
     "/metrics",
     response_model=MetricsResponseModel,
@@ -258,7 +259,6 @@ async def authenticate(payload: RequestModel, background_tasks: BackgroundTasks)
     - profile (bool, optional): Flag indicating whether to retrieve the user's profile information.
     - fields (List[str], optional): Specific profile fields to include in the response.
     """
-
     current_time = datetime.datetime.now(IST)
     # Input has already been validated by the RequestModel
     username = payload.username
